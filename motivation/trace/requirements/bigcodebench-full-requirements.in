@@ -1,0 +1,21 @@
+# Independent full-candidate environment; keep the pilot environment unchanged.
+numpy==1.26.4
+pandas==2.2.3
+scipy==1.13.1
+scikit-learn==1.5.2
+beautifulsoup4
+cryptography
+opencv-python-headless<4.12
+django
+matplotlib
+mechanize
+nltk
+prettytable
+python-http-client
+regex
+requests
+rsa
+seaborn
+sendgrid
+wikipedia
+wordcloud

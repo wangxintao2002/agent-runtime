@@ -1,0 +1,21 @@
+{
+  "key": "universe",
+  "task_file": "../../../data/swe/universe/task.json",
+  "source": "../../../cache/swe/universe/source",
+  "python": "../../../cache/swe/universe/venv/bin/python",
+  "source_paths": [
+    "universe"
+  ],
+  "pythonpath": [
+    "."
+  ],
+  "test_args": [
+    "tests"
+  ],
+  "pytest_plugins": [],
+  "agent_test_command": "python -m pytest -q",
+  "test_scope": "full repository suite",
+  "import_modules": [
+    "universe"
+  ]
+}
