@@ -5,7 +5,7 @@ import json
 from pathlib import Path
 
 from replay import Normalize, read_rows, response_frames
-from tool_evidence import rejected_edits
+from tool_evidence import rejected_tools
 
 
 def audit(run, allow_text_coalescing=False):
@@ -34,8 +34,8 @@ def _audit(run, allow_text_coalescing=False):
     complete_globs = [k for k, h in post.items() if pre[k]["tool_name"] == "Glob"
                       and h.get("tool_response", {}).get("truncated") is False
                       and h.get("tool_response", {}).get("countIsComplete") is True]
-    rejected = rejected_edits(read_rows(source / "claude.jsonl"), pre) if (source / "claude.jsonl").exists() else {}
-    actual_rejected = rejected_edits(read_rows(run / "claude.jsonl"), actual_pre) if (run / "claude.jsonl").exists() else {}
+    rejected = rejected_tools(read_rows(source / "claude.jsonl"), pre) if (source / "claude.jsonl").exists() else {}
+    actual_rejected = rejected_tools(read_rows(run / "claude.jsonl"), actual_pre) if (run / "claude.jsonl").exists() else {}
     source_metadata = json.loads((source / "metadata.json").read_text()) if (source / "metadata.json").exists() else {}
     runtime_dates = [source_metadata.get("date_utc", "")[:10], configuration.get("date_utc", "")[:10]]
     normal = Normalize(source / "workspace", run / "workspace", {**pre, **rejected}, complete_globs, runtime_dates)
@@ -109,7 +109,9 @@ def _audit(run, allow_text_coalescing=False):
             "stream_transform_authorized": allow_text_coalescing,
             "stream_transform_audits": transforms,
             "raw_evidence_matches": tools_ok and requests_ok and responses_ok and patches_ok and timing_ok and acceptance_ok and rejection_ok,
-            "rejected_edits_match": rejection_ok,
+            "rejected_tools_match": rejection_ok,
+            "rejected_edits_match": normal.paths({k: v for k, v in rejected.items() if v['tool_name'] == 'Edit'}) ==
+                                    normal.paths({k: v for k, v in actual_rejected.items() if v['tool_name'] == 'Edit'}),
             "independent_acceptance_outcome_matches": acceptance_ok,
             "tool_inputs_and_outputs_match": tools_ok, "full_model_requests_match": requests_ok if not light else None,
             "model_round_sequence_matches": requests_ok, "executor": "light" if light else "claude",

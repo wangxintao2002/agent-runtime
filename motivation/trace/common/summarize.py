@@ -4,7 +4,7 @@ from collections import Counter
 import hashlib
 import json
 from pathlib import Path
-from tool_evidence import rejected_edits
+from tool_evidence import rejected_tools
 
 
 def rows(path):
@@ -90,7 +90,7 @@ def summarize(out):
     if executor == "light":
         stream_calls = {m["id"] for m in messages if m.get("type") == "light_tool"}
     complete_tools = bool(begins) and begins.keys() == ends.keys() and None not in begins and not duplicate_ids
-    rejected = rejected_edits(messages, begins) if executor == "claude" else {}
+    rejected = rejected_tools(messages, begins) if executor == "claude" else {}
     complete_tools = complete_tools and stream_calls == begins.keys() | rejected.keys()
     fidelity = []
     for r in records:
@@ -147,7 +147,8 @@ def summarize(out):
             "response_chunk_records_complete": all(fidelity),
             "unmatched_pre_tools": sorted(begins.keys() - ends.keys()), "unmatched_post_tools": sorted(ends.keys() - begins.keys()),
             "stream_tool_call_count": len(stream_calls), "agent_result_ok": agent_ok,
-            "edits_rejected_without_hooks": sorted(rejected),
+            "tools_rejected_without_hooks": {k: v["tool_name"] for k, v in sorted(rejected.items())},
+            "edits_rejected_without_hooks": sorted(k for k, v in rejected.items() if v["tool_name"] == "Edit"),
             "rejected_edit_timing_note": "No tool boundary timestamps for these rejections; their resources remain in whole-task accounting",
             "usage_reported_by_cli": results[0].get("usage") if results else None,
             "cost_note": "Claude USD estimates are not treated as verified DeepSeek billing",

@@ -14,7 +14,7 @@ import threading
 import time
 
 from record import Handler, Recorder, save
-from tool_evidence import rejected_edits
+from tool_evidence import rejected_tools
 
 
 def read_rows(path):
@@ -235,9 +235,9 @@ class ReplayServer(Recorder):
                 self.expected_posts[hook["tool_use_id"]] = hook
         if self.calls.keys() != self.expected_posts.keys():
             raise ValueError("Source tool events incomplete")
-        self.rejected = rejected_edits(read_rows(source / "claude.jsonl"), self.calls) if (source / "claude.jsonl").exists() else {}
+        self.rejected = rejected_tools(read_rows(source / "claude.jsonl"), self.calls) if (source / "claude.jsonl").exists() else {}
         if self.rejected and executor == "light":
-            raise ValueError("Light executor does not implement Claude pre-hook Edit rejection")
+            raise ValueError("Light executor does not implement Claude pre-hook tool rejection")
         self.calls.update(self.rejected)
         self.rejections_seen = set()
         complete_globs = [k for k, h in self.expected_posts.items() if self.calls[k]["tool_name"] == "Glob"
@@ -305,7 +305,9 @@ class ReplayServer(Recorder):
                 "upstream_requests": 0, "matched_requests": self.validated_requests,
                 "expected_requests": len(self.folders), "started_tools": len(self.started_tools),
                 "matched_tool_results": len(self.finished_tools), "expected_tools": len(self.expected_posts),
-                "expected_rejected_edits": len(self.rejected), "matched_rejected_edits": len(self.rejections_seen),
+                "expected_rejected_tools": len(self.rejected), "matched_rejected_tools": len(self.rejections_seen),
+                "expected_rejected_edits": sum(r["tool_name"] == "Edit" for r in self.rejected.values()),
+                "matched_rejected_edits": sum(self.rejected[k]["tool_name"] == "Edit" for k in self.rejections_seen),
                 "mismatch": self.failed.is_set(),
                 "complete": not self.failed.is_set() and self.validated_requests == len(self.folders)
                             and self.finished_tools == self.expected_posts.keys() and self.rejections_seen == self.rejected.keys()}
@@ -377,8 +379,8 @@ class ReplayHandler(Handler):
                     key = block["tool_use_id"]
                     expected = server.rejected[key]["error_result"]
                     if key not in server.allowed_tools or server.normal.paths(block) != server.normal.paths(expected):
-                        server.mismatch("changed-edit-rejection", server.normal.paths(expected), server.normal.paths(block))
-                        self.reply(400, {"error": "Edit rejection mismatch"})
+                        server.mismatch("changed-tool-rejection", server.normal.paths(expected), server.normal.paths(block))
+                        self.reply(400, {"error": "Tool rejection mismatch"})
                         return
                     server.rejections_seen.add(key)
                     continue

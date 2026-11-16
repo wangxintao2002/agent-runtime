@@ -252,6 +252,71 @@ class ReplayTests(unittest.TestCase):
             finally:
                 server.server_close()
 
+    def test_pre_hook_write_rejection_must_recur_with_identical_input_and_error(self):
+        from tool_evidence import STALE_WRITE_ERROR
+        for mutation in (None, 'error', 'success', 'input', 'executed'):
+            with self.subTest(mutation=mutation), tempfile.TemporaryDirectory() as tmp:
+                root = Path(tmp)
+                source, first = self.source(root)
+                call = dict(type='tool_use', id='w', name='Write',
+                            input=dict(file_path=str(source / 'workspace/a.py'), content='new'))
+                result = dict(type='tool_result', tool_use_id='w', is_error=True, content=STALE_WRITE_ERROR)
+                messages = [dict(role='assistant', content=[call]), dict(role='user', content=[result])]
+                (source / 'claude.jsonl').write_text(''.join(json.dumps(dict(type=m['role'], message=m)) + '\n'
+                                                           for m in messages))
+                first_folder = source / 'requests/0001'
+                events = [dict(type='message_start', message=dict(id='m')),
+                    dict(type='content_block_start', index=0,
+                         content_block=dict(type='tool_use', id='w', name='Write', input={})),
+                    dict(type='content_block_delta', index=0,
+                         delta=dict(type='input_json_delta', partial_json=json.dumps(call['input']))),
+                    dict(type='content_block_stop', index=0), dict(type='message_stop')]
+                raw = b''.join(('event: ' + e['type'] + '\ndata: ' + json.dumps(e) + '\n\n').encode() for e in events)
+                first_folder.joinpath('response.bin').write_bytes(raw)
+                first_folder.joinpath('chunks.jsonl').write_text(json.dumps(dict(offset=0, length=len(raw), monotonic_s=10.2)) + '\n')
+                second = dict(first, messages=messages)
+                second_folder = source / 'requests/0002'
+                second_folder.mkdir()
+                second_folder.joinpath('request.json').write_text(json.dumps(second))
+                end = b'event: message_stop\ndata: {"type":"message_stop"}\n\n'
+                second_folder.joinpath('response.bin').write_bytes(end)
+                second_folder.joinpath('chunks.jsonl').write_text(json.dumps(dict(offset=0, length=len(end), monotonic_s=10.2)) + '\n')
+                second_folder.joinpath('meta.json').write_bytes(first_folder.joinpath('meta.json').read_bytes())
+                out = root / 'out'
+                out.mkdir()
+                server = ReplayServer(out, source, out / 'workspace', delay_scale=0)
+                thread = threading.Thread(target=server.serve_forever, daemon=True)
+                thread.start()
+                def send(payload):
+                    client = http.client.HTTPConnection('127.0.0.1', server.server_port, timeout=5)
+                    client.request('POST', '/anthropic/v1/messages', json.dumps(payload),
+                                   {'Authorization': 'Bearer ' + server.token, 'Content-Type': 'application/json'})
+                    response = client.getresponse()
+                    response.read()
+                    status = response.status
+                    client.close()
+                    return status
+                try:
+                    with patch('http.client.HTTPSConnection', side_effect=AssertionError('No live model allowed')):
+                        self.assertEqual(send(first), 200)
+                        actual = copy.deepcopy(second)
+                        if mutation == 'error':
+                            actual['messages'][1]['content'][0]['content'] = 'different failure'
+                        elif mutation == 'success':
+                            actual['messages'][1]['content'][0]['is_error'] = False
+                        elif mutation == 'input':
+                            actual['messages'][0]['content'][0]['input']['content'] = 'different write'
+                        elif mutation == 'executed':
+                            self.assertFalse(server.check_hook(dict(hook_event_name='PreToolUse',
+                                tool_use_id='w', tool_name='Write', tool_input=call['input'])))
+                        self.assertEqual(send(actual), 200 if mutation is None else 400)
+                        self.assertEqual(server.report()['complete'], mutation is None)
+                        self.assertEqual(server.report()['matched_rejected_tools'], int(mutation is None))
+                finally:
+                    server.shutdown()
+                    server.server_close()
+                    thread.join(timeout=5)
+
 
 if __name__ == "__main__":
     unittest.main()
