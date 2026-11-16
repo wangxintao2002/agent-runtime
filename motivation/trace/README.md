@@ -36,6 +36,11 @@ python motivation/trace/trace.py check
 基础录制、回放和观测仅使用 Python 标准库。测试还需要 NumPy；数据准备需要 PyArrow。完整负载依赖较多，分别使用环境，勿把所有包安装进系统 Python：
 
 ```bash
+# Parquet 数据准备环境：与 Agent 的工具依赖分开
+uv venv --python 3.13.5 motivation/trace/.venv-prepare
+uv pip install --python motivation/trace/.venv-prepare/bin/python \
+  -r motivation/trace/requirements/preparation-requirements.txt
+
 # BigCodeBench 完整工具环境：原快照使用 Python 3.11.12
 uv venv --python 3.11.12 motivation/trace/.venv-bcb
 uv pip install --python motivation/trace/.venv-bcb/bin/python \
@@ -49,10 +54,12 @@ uv pip install --python motivation/trace/.venv-qa/bin/python \
 
 依赖快照来自已有环境，本次迁移未重新下载、安装全部负载依赖。部分负载另需系统库，任务可用性须通过实际准备和单任务资格检查确认。`bigcodebench-requirements.lock.txt` 是早期小集合环境，不应作为完整任务集依赖。
 
+BigCodeBench 的工具环境快照不包含 PyArrow。准备 parquet 时使用 `.venv-prepare`（或已有的检索环境），录制和回放使用 `.venv-bcb`；不要为数据准备修改已经冻结的工具环境。
+
 ## BigCodeBench：准备、录制、自动校验
 
 ```bash
-motivation/trace/.venv-bcb/bin/python motivation/trace/trace.py bcb-prepare \
+motivation/trace/.venv-prepare/bin/python motivation/trace/trace.py bcb-prepare \
   --out motivation/trace/data/bigcodebench-128 --task-limit 128
 
 # 先录 2 个不同任务，每个完整录制随后做一次无 API 的真实工具回放
@@ -90,7 +97,7 @@ SWE 任务来自不同软件仓库，不能用一个通用虚拟环境运行全�
 先从已下载的 SWE-rebench parquet 或单任务 JSON 中导出指定任务。导出器会剔除参考源码补丁 `patch`，保留独立验证需要的 `test_patch`，记录输入文件哈希：
 
 ```bash
-python motivation/trace/trace.py swe-export \
+motivation/trace/.venv-prepare/bin/python motivation/trace/trace.py swe-export \
   --input /path/to/swe-rebench.parquet --instance-id jbradberry__universe-31 \
   --out motivation/trace/data/swe/universe
 

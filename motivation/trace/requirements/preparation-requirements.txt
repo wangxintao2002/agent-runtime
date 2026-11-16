@@ -1,0 +1,2 @@
+# Parquet preparation only; kept outside the frozen Agent tool environment.
+pyarrow==26.0.0
